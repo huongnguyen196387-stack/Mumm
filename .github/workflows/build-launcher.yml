@@ -1,0 +1,114 @@
+# Build "Nova Launcher" (APK riêng có sẵn Nova Client) hoàn toàn trên GitHub Actions.
+# Cách dùng: đẩy repo nova-client lên GitHub (file này đã nằm đúng chỗ),
+# vào tab Actions -> "Build Nova Launcher" -> Run workflow. Tải APK ở mục Artifacts.
+name: Build Nova Launcher
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      launcher_ref:
+        description: "Tag/nhánh của LiteLDev/LeviLaunchroid (nếu clone lỗi, kiểm tra tên tag trên GitHub)"
+        default: "v1.5.27"
+      app_name:
+        description: "Tên hiển thị của app"
+        default: "Nova Launcher"
+      app_id:
+        description: "applicationId (chữ thường, ví dụ com.tenban.novalauncher)"
+        default: "com.nova.launcher"
+
+jobs:
+  mod:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: android-actions/setup-android@v3
+      - name: Cài NDK + Ninja
+        run: |
+          sdkmanager "platforms;android-28" "ndk;28.2.13676358"
+          sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Build Nova Client (.levipack, arm64-v8a)
+        shell: pwsh
+        run: ./scripts/package.ps1 -Abi arm64-v8a
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nova-levipack
+          path: build-arm64-v8a/*.levipack
+          if-no-files-found: error
+
+  launcher:
+    needs: mod
+    runs-on: ubuntu-latest
+    steps:
+      - name: Lấy script đổi tên (repo này)
+        uses: actions/checkout@v4
+        with:
+          path: nova
+
+      - name: Clone LeviLaunchroid (kèm submodule preloader + libHttpClient)
+        run: |
+          git clone --recursive --depth 1 --shallow-submodules \
+            --branch "${{ inputs.launcher_ref }}" \
+            https://github.com/LiteLDev/LeviLaunchroid launcher
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: nova-levipack
+          path: levipack
+
+      - name: Đổi tên, đổi id, nhúng Nova Client
+        run: |
+          python3 nova/launcher-fork/apply_nova_branding.py launcher \
+            --name "${{ inputs.app_name }}" \
+            --app-id "${{ inputs.app_id }}" \
+            --levipack "$(ls levipack/*.levipack | head -n1)"
+
+      # Launcher dùng plugin Firebase nên bắt buộc có google-services.json. Repo gốc cũng dùng file
+      # placeholder này cho CI. Hệ quả: Crashlytics và thông báo đẩy của launcher gốc không hoạt động.
+      - name: Tạo google-services.json placeholder
+        run: |
+          cat > launcher/app/google-services.json <<JSON
+          {
+            "project_info": {
+              "project_number": "000000000000",
+              "project_id": "ci-placeholder",
+              "storage_bucket": "ci-placeholder.appspot.com"
+            },
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
+                  "android_client_info": { "package_name": "${{ inputs.app_id }}" }
+                },
+                "oauth_client": [],
+                "api_key": [ { "current_key": "AIzaSyCIOnlyPlaceholderKey" } ],
+                "services": { "appinvite_service": { "other_platform_oauth_client": [] } }
+              }
+            ],
+            "configuration_version": "1"
+          }
+          JSON
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v3
+      - name: Cài SDK/NDK/CMake
+        run: sdkmanager "platforms;android-36" "ndk;28.2.13676358" "cmake;3.22.1"
+
+      - name: Build APK (debug – tự ký bằng debug key, cài được ngay)
+        working-directory: launcher
+        run: ./gradlew --no-daemon assembleDebug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nova-launcher-apk
+          path: launcher/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
