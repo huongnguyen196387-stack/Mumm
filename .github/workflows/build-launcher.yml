@@ -100,10 +100,12 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - uses: android-actions/setup-android@v3
+            - uses: android-actions/setup-android@v4
+
       - name: Cài SDK/NDK/CMake
-        yes | sdkmanager --licenses
-        run: sdkmanager "platforms;android-36" "ndk;28.2.13676358" "cmake;3.22.1"
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager "platforms;android-36" "ndk;28.2.13676358" "cmake;3.22.1"
 
       - name: Build APK (debug – tự ký bằng debug key, cài được ngay)
         working-directory: launcher
