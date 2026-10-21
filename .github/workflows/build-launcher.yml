@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
       - name: Cài NDK + Ninja
         run: |
           yes | sdkmanager --licenses
@@ -100,7 +100,7 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-            - uses: android-actions/setup-android@v4
+      - uses: android-actions/setup-android@v4
 
       - name: Cài SDK/NDK/CMake
         run: |
