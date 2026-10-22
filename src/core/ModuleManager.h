@@ -40,8 +40,6 @@ class ModuleManager {
     void applyConfig(const std::string &moduleId, const std::string &key, const std::string &value);
     void loop();
 
-    std::string schemaJson(const Module &m) const;
-
     ll::mod::NativeMod *mSelf = nullptr;
     Settings mSettings;
     std::vector<Entry> mEntries;

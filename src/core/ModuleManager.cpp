@@ -57,51 +57,6 @@ void ModuleManager::add(std::unique_ptr<Module> module) {
     mEntries.push_back(Entry{std::move(module)});
 }
 
-std::string ModuleManager::schemaJson(const Module &m) const {
-    using namespace pl::modmenu;
-    ConfigSchemaBuilder b;
-    b.defaultCategory("general");
-
-    std::vector<std::string> seen;
-    for (const auto &o : m.options()) {
-        if (std::find(seen.begin(), seen.end(), o.category) == seen.end()) seen.push_back(o.category);
-    }
-    // "general" luôn đứng đầu nếu có.
-    std::stable_partition(seen.begin(), seen.end(), [](const std::string &c) { return c == "general"; });
-    for (const auto &c : seen) b.category(c, categoryTitle(c));
-
-    for (const auto &o : m.options()) {
-        ConfigNodeV2 n;
-        n.id = m.id() + "." + o.key;
-        n.key = o.key;
-        n.category = o.category;
-        n.title = o.title;
-        n.description = o.desc;
-        n.type = o.type;
-        n.choiceStyle = o.style;
-        n.defaultValue = o.def;
-        n.currentValue = m.str(o.key);
-        n.hasCurrentValue = true;
-        n.minValue = o.min;
-        n.maxValue = o.max;
-        n.step = o.step;
-        n.unit = o.unit;
-        n.advanced = o.advanced;
-        n.colorAlpha = o.colorAlpha;
-        for (const auto &c : o.choices) {
-            ConfigOptionV2 opt;
-            opt.value = c.value;
-            opt.label = c.label;
-            n.options.push_back(std::move(opt));
-        }
-        if (!o.visibleKey.empty()) {
-            n.visibleWhen.push_back({o.visibleKey, ConfigConditionOpV2::Equals, o.visibleValue});
-        }
-        b.node(std::move(n));
-    }
-    return b.toJson();
-}
-
 void ModuleManager::registerModule(Entry &entry) {
     Module &m = *entry.module;
 
@@ -124,11 +79,15 @@ void ModuleManager::registerModule(Entry &entry) {
             applyConfig(std::string(mid), std::string(key), std::string(value));
         });
 
+    for (const auto &o : m.options()) {
+        builder.config(o.key, o.title, o.type, o.def, o.min, o.max,
+                       o.visibleKey);
+    }
+
     if (!builder.registerModule()) {
         mSelf->getLogger().warn("Không đăng ký được module {}", id);
         return;
     }
-    pl::modmenu::setConfigSchemaJson(id, schemaJson(m));
     entry.registered = true;
     m.registerExtras();
     if (enabled) m.onEnable();
@@ -205,12 +164,7 @@ void ModuleManager::loop() {
         float dt = std::chrono::duration<float>(now - last).count();
         last = now;
 
-        auto surf = pl::modmenu::getHudSurfaceSize();
         HudContext ctx;
-        if (surf.width > 100.f && surf.height > 100.f) {
-            ctx.width = surf.width;
-            ctx.height = surf.height;
-        }
         ctx.scale = ctx.height / 1080.f;
         InputState::get().setSurface(ctx.width, ctx.height);
         FrameClock::update(std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -221,9 +175,6 @@ void ModuleManager::loop() {
             std::string name;
             std::vector<pl::modmenu::DrawCommand> cmds;
             bool submitCmds = false;
-            bool hasEditor = false;
-            bool submitEditor = false;
-            pl::modmenu::HudEditorElement editor;
         };
         std::vector<Out> outs;
 
@@ -255,36 +206,13 @@ void ModuleManager::loop() {
                     o.cmds = hud.commands();
                     o.submitCmds = true;
                 }
-                if (m.hasHud() && m.boundsW() > 0.f) {
-                    o.hasEditor = true;
-                    o.editor.elementId = m.id();
-                    o.editor.displayName = m.name();
-                    o.editor.x = m.posX();
-                    o.editor.y = m.posY();
-                    o.editor.width = m.boundsW();
-                    o.editor.height = m.boundsH();
-                    o.editor.snapThreshold = 12.f;
-                    o.editor.gridGap = 4.f;
-                    o.editor.snapFlags = pl::modmenu::HudSnapGrid | pl::modmenu::HudSnapElements |
-                                         pl::modmenu::HudSnapScreenCenter;
-                    float key[4] = {o.editor.x, o.editor.y, o.editor.width, o.editor.height};
-                    uint64_t eh = fnv(1469598103934665603ull, key, sizeof key);
-                    if (eh != e.lastEditorHash) {
-                        e.lastEditorHash = eh;
-                        o.submitEditor = true;
-                    }
-                }
-                if (o.submitCmds || o.submitEditor) outs.push_back(std::move(o));
+                if (o.submitCmds) outs.push_back(std::move(o));
             }
         }
 
         // Gọi API launcher NGOÀI lock để tránh deadlock với callback onToggle/onConfigChanged.
         for (auto &o : outs) {
             if (o.submitCmds) pl::modmenu::submitDrawCommands(o.id, o.cmds);
-            if (o.submitEditor) {
-                pl::modmenu::HudEditorElement el = o.editor;
-                pl::modmenu::submitHudEditorElements(o.id, std::span(&el, 1));
-            }
         }
 
         if (now - lastFlush > std::chrono::seconds(2)) {

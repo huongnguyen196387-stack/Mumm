@@ -12,8 +12,7 @@
 
 namespace nova {
 
-using pl::modmenu::ConfigChoiceStyleV2;
-using pl::modmenu::ConfigControlTypeV2;
+using pl::modmenu::ConfigType;
 
 struct Choice {
     std::string value;
@@ -26,8 +25,7 @@ struct Opt {
     std::string title;
     std::string desc;
     std::string category = "general"; // general | appearance | position
-    ConfigControlTypeV2 type = ConfigControlTypeV2::Toggle;
-    ConfigChoiceStyleV2 style = ConfigChoiceStyleV2::Auto;
+    ConfigType type = ConfigType::Toggle;
     std::string def;
     std::string min, max, step, unit;
     std::vector<Choice> choices;
@@ -107,7 +105,7 @@ class Module {
         Opt o;
         o.key = std::move(key);
         o.title = std::move(title);
-        o.type = ConfigControlTypeV2::SliderInt;
+        o.type = ConfigType::SliderInt;
         o.def = std::to_string(def);
         o.min = std::to_string(lo);
         o.max = std::to_string(hi);
@@ -120,7 +118,7 @@ class Module {
         Opt o;
         o.key = std::move(key);
         o.title = std::move(title);
-        o.type = ConfigControlTypeV2::Color;
+        o.type = ConfigType::Color;
         o.def = colorToString(def);
         o.colorAlpha = alpha;
         o.category = "appearance";
@@ -131,8 +129,7 @@ class Module {
         Opt o;
         o.key = std::move(key);
         o.title = std::move(title);
-        o.type = ConfigControlTypeV2::Choice;
-        o.style = ConfigChoiceStyleV2::Dropdown;
+        o.type = ConfigType::Radio;
         o.def = std::move(def);
         o.choices = std::move(choices);
         return add(std::move(o));
